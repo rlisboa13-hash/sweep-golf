@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sweep Golf">
+<title>Sweep Golf — 2º Semestre 2026</title>
+<link rel="manifest" href='data:application/manifest+json,{"name":"Sweep Golf","short_name":"Sweep","start_url":".","display":"standalone","background_color":"%230f172a","theme_color":"%230f172a"}'>
+<style>
+  *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);color:#e2e8f0;padding:16px;font-size:14px;line-height:1.5;min-height:100vh}
+  .wrap{max-width:760px;margin:0 auto}
+  .card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px;margin-bottom:14px}
+  .hdr{text-align:center;margin-bottom:14px}
+  .hdr h1{margin:0 0 4px;font-size:22px;letter-spacing:.5px;background:linear-gradient(90deg,#fbbf24,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .hdr .sub{color:#94a3b8;font-size:13px}
+  h2{margin:0 0 10px;font-size:16px;color:#f59e0b;display:flex;align-items:center;gap:6px}
+  .podium{display:grid;grid-template-columns:1fr;gap:8px}
+  .pod-row{display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,0.03);border-radius:10px}
+  .pod-row .pos{font-weight:700;width:34px;color:#fbbf24}
+  .pod-row .n{flex:1;font-weight:600}
+  .pod-row .sc{color:#94a3b8;width:52px;text-align:right}
+  .pod-row .pz{color:#86efac;width:76px;text-align:right;font-weight:600}
+  .rank{display:grid;grid-template-columns:32px 1fr 60px 50px 60px;gap:6px;font-size:13px;align-items:center}
+  .rank .hdr-cell{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.1)}
+  .rank .cell{padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+  .rank .pos{text-align:center;color:#94a3b8}
+  .rank .score{text-align:right;font-weight:600}
+  .rank .avg{text-align:right;color:#9ae6b4}
+  .rank .j{text-align:right;color:#94a3b8}
+  .chip{display:inline-block;padding:1px 6px;border-radius:8px;background:rgba(251,191,36,0.15);color:#fbbf24;font-size:10px;margin-left:4px}
+  .fin{display:grid;grid-template-columns:1fr 90px;gap:4px 10px;font-size:13px}
+  .fin .p{padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+  .fin .v{padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);text-align:right;font-weight:600}
+  .fin .pos{color:#86efac}.fin .neg{color:#fca5a5}.fin .zero{color:#94a3b8}
+  .scroll{overflow-x:auto;margin:0 -4px}
+  .scroll table{border-collapse:collapse;font-size:12px;min-width:100%}
+  .scroll th,.scroll td{padding:4px 5px;border-bottom:1px solid rgba(255,255,255,0.05);white-space:nowrap}
+  .scroll th{font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;text-align:center}
+  .scroll th .rlabel{display:block}
+  .scroll th .rdate{display:block;font-size:9px;color:#64748b;font-weight:normal;letter-spacing:0}
+  .scroll td.num{text-align:center;font-variant-numeric:tabular-nums}
+  .scroll td.count{background:rgba(251,191,36,0.18);color:#fde68a;font-weight:700;border-radius:3px}
+  .scroll td:first-child{font-weight:600;text-align:left}
+  .scroll th.avg-col,.scroll td.avg-col{background:rgba(134,239,172,0.06);border-left:1px solid rgba(134,239,172,0.15)}
+  .scroll td.avg-col{color:#9ae6b4;font-weight:600}
+  .legend{font-size:11px;color:#94a3b8;margin-top:6px}
+  .legend .hl{display:inline-block;padding:0 5px;background:rgba(251,191,36,0.18);color:#fde68a;border-radius:3px;font-weight:700}
+  .bullet{padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:12.5px}
+  .bullet:last-child{border-bottom:none}
+  .footer{text-align:center;color:#64748b;font-size:11px;padding:14px 0 4px}
+  .loading,.error{text-align:center;padding:40px 16px;color:#94a3b8}
+  .error{color:#fca5a5}
+  .error .hint{color:#94a3b8;font-size:12px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="loading">⛳ Carregando placares…</div></div>
+<script>
+"use strict";
+/* ============== CONFIG ============== */
+const SHEET_ID = "1rt4jNa5HFQecJhe2UOmD8Bd7FvZxxsTYCy23fBq_m-s";
+const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&t=${Date.now()}`;
+const DOUBLE_ROUND = 21;          // R21 conta em dobro
+const TOP_N = 9;                  // TOP 9 pontuações
+const FEE = 50;                   // pingo por rodada
+const LAST_PENALTY = 50;          // extra do último colocado
+// Premiação diária BRUTA por nº de presentes: [1º, 2º, 3º, 4º]
+const PRIZES = {4:[200,50],5:[200,100],6:[250,100],7:[250,150],8:[250,150,50],
+  9:[300,150,50],10:[350,150,50],11:[350,200,50],12:[400,200,50],13:[400,200,100],
+  14:[450,200,100],15:[450,250,100],16:[450,250,100,50]};
+const SEASON_END = "19/12";
+
+/* ============== HELPERS ============== */
+function parseCSV(text){
+  const rows=[];let row=[],cell="",inQ=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(inQ){
+      if(ch==='"'){ if(text[i+1]==='"'){cell+='"';i++;} else inQ=false; }
+      else cell+=ch;
+    } else {
+      if(ch==='"') inQ=true;
+      else if(ch===','){row.push(cell);cell="";}
+      else if(ch==='\n'){row.push(cell);rows.push(row);row=[];cell="";}
+      else if(ch!=='\r') cell+=ch;
+    }
+  }
+  if(cell!==""||row.length){row.push(cell);rows.push(row);}
+  return rows;
+}
+function prizeList(n){
+  if(n<2) return [];
+  if(n<4){ // menos de 4: vencedor leva o pool inteiro
+    return [(n-1)*FEE+FEE+LAST_PENALTY];
+  }
+  if(PRIZES[n]) return PRIZES[n].slice();
+  // extrapolação acima de 16: +R$50 no 1º por jogador extra
+  const base=PRIZES[16].slice();
+  base[0]+= (n-16)*FEE;
+  return base;
+}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function fmtMoney(v){
+  const r=Math.round(v);
+  const sign=r>0?"+":(r<0?"−":"");
+  return sign+"R$"+Math.abs(r);
+}
+
+/* ============== CORE ============== */
+function buildModel(rows){
+  const header=rows[0];
+  // colunas de rodada: "R1 01/08" ... "R21 19/12 (x2)"
+  const rounds=[];
+  for(let c=1;c<header.length;c++){
+    const m=String(header[c]).match(/^R(\d+)\s+(\d{2}\/\d{2})/);
+    if(m) rounds.push({col:c,num:+m[1],date:m[2],weight:+m[1]===DOUBLE_ROUND?2:1});
+  }
+  const players=[];
+  for(let r=1;r<rows.length;r++){
+    const name=String(rows[r][0]||"").trim();
+    if(!name) continue;
+    const scores=rounds.map(rd=>{
+      const v=String(rows[r][rd.col]??"").trim();
+      if(v==="") return null;
+      const n=parseInt(v,10);
+      return isNaN(n)?null:n;
+    });
+    players.push({name,scores});
+  }
+  // enrich: jogos ponderados, TOP9, média
+  for(const p of players){
+    const played=p.scores.map((s,i)=>[i,s]).filter(([,s])=>s!==null);
+    p.jogos=played.reduce((a,[i])=>a+rounds[i].weight,0);
+    const expanded=[];
+    for(const [i,s] of played) for(let k=0;k<rounds[i].weight;k++) expanded.push([i,s]);
+    const top=expanded.slice().sort((a,b)=>b[1]-a[1]).slice(0,TOP_N);
+    p.top9Idx=new Set(top.map(([i])=>i));
+    p.top9Sum=top.reduce((a,[,s])=>a+s,0);
+    p.top9Min=top.length?Math.min(...top.map(([,s])=>s)):null;
+    p.avgAll=played.length?played.reduce((a,[,s])=>a+s,0)/played.length:0;
+    p.inDiscard=p.jogos>=TOP_N;
+  }
+  // resultados por rodada + saldos
+  for(const p of players){p.balance=0;p.lastCount=0;p.prizeTotal=0;}
+  const roundResults=[];
+  rounds.forEach((rd,i)=>{
+    const present=players.filter(p=>p.scores[i]!==null);
+    if(!present.length) return;
+    const n=present.length;
+    const sorted=present.slice().sort((a,b)=>b.scores[i]-a.scores[i]);
+    const prizes=prizeList(n);
+    // agrupa por pontuação (empates)
+    const groups=[];
+    for(const p of sorted){
+      const g=groups[groups.length-1];
+      if(g&&g.score===p.scores[i]) g.players.push(p);
+      else groups.push({score:p.scores[i],players:[p]});
+    }
+    let pos=1;const podium=[];
+    for(const g of groups){
+      const span=g.players.length;
+      // prêmios das posições pos..pos+span-1 somados e divididos
+      let pot=0;
+      for(let k=pos;k<pos+span;k++) pot+=(prizes[k-1]||0);
+      const each=pot/span;
+      for(const p of g.players){
+        p.balance+=each; p.prizeTotal+=each;
+        if(pos<=4&&each>0) podium.push({pos,name:p.name,score:g.score,prize:each,tie:span>1});
+      }
+      pos+=span;
+    }
+    // pingo
+    for(const p of present) p.balance-=FEE;
+    // último colocado (empate no último: penalidade dividida)
+    const lastGroup=groups[groups.length-1];
+    for(const p of lastGroup.players){
+      p.balance-=LAST_PENALTY/lastGroup.players.length;
+      p.lastCount++;
+    }
+    roundResults.push({num:rd.num,date:rd.date,n,podium,
+      last:lastGroup.players.map(p=>p.name),lastTie:lastGroup.players.length>1});
+  });
+  return {rounds,players,roundResults};
+}
+
+/* ============== RENDER ============== */
+function render(model){
+  const {rounds,players,roundResults}=model;
+  const lastRound=roundResults.length?roundResults[roundResults.length-1]:null;
+  const ranked=players.slice().sort((a,b)=>b.top9Sum-a.top9Sum||b.avgAll-a.avgAll);
+  let h="";
+  // Header
+  const sub=lastRound
+    ? `Atualizado após R${lastRound.num} (${lastRound.date}) · ${lastRound.n} jogadores presentes`
+    : "Pré-temporada · R1 em 01/08/2026 · 21 etapas até "+SEASON_END;
+  h+=`<div class="hdr"><h1>🏌️ Sweep Golf — 2º Semestre 2026</h1><div class="sub">${sub}</div></div>`;
+  // Pódio da última rodada
+  if(lastRound){
+    let rows="";
+    const seen=new Set();
+    for(const p of lastRound.podium){
+      rows+=`<div class="pod-row"><div class="pos">${p.pos}º</div>`+
+        `<div class="n">${esc(p.name)}${p.tie?" (empate)":""}</div>`+
+        `<div class="sc">${p.score} pts</div>`+
+        `<div class="pz">R$${Math.round(p.prize*100)/100}</div></div>`;
+      seen.add(p.name);
+    }
+    const lastTxt=lastRound.last.map(esc).join(" e ");
+    rows+=`<div class="pod-row"><div class="pos">🔻</div>`+
+      `<div class="n">${lastTxt}${lastRound.lastTie?" (empate no último)":""}</div>`+
+      `<div class="sc"></div><div class="pz" style="color:#fca5a5">paga R$${FEE+LAST_PENALTY}</div></div>`;
+    h+=`<div class="card"><h2>🏆 Destaque da Rodada R${lastRound.num}</h2><div class="podium">${rows}</div></div>`;
+  }
+  // Ranking TOP9
+  {
+    let cells=`<div class="hdr-cell pos">#</div><div class="hdr-cell">Jogador</div>`+
+      `<div class="hdr-cell score">TOP9</div><div class="hdr-cell j">Jogos</div><div class="hdr-cell avg">Média</div>`;
+    ranked.forEach((p,idx)=>{
+      const chip=p.inDiscard?'<span class="chip">⚡</span>':"";
+      const avg=p.jogos===0?"—":(p.jogos>=TOP_N?(p.top9Sum/TOP_N).toFixed(1):(p.top9Sum/p.jogos).toFixed(1));
+      cells+=`<div class="cell pos">${idx+1}</div><div class="cell">${esc(p.name)}${chip}</div>`+
+        `<div class="cell score">${p.top9Sum}</div><div class="cell j">${p.jogos}</div><div class="cell avg">${avg}</div>`;
+    });
+    h+=`<div class="card"><h2>📊 Ranking TOP 9</h2><div class="rank">${cells}</div></div>`;
+  }
+  // Saldo financeiro
+  if(roundResults.length){
+    const finRanked=players.slice().sort((a,b)=>b.balance-a.balance);
+    let rows="";
+    for(const p of finRanked){
+      const v=Math.round(p.balance);
+      const cls=v>0?"pos":(v<0?"neg":"zero");
+      rows+=`<div class="p">${esc(p.name)}</div><div class="v ${cls}">${fmtMoney(v)}</div>`;
+    }
+    h+=`<div class="card"><h2>💰 Saldo Financeiro</h2><div class="fin">${rows}</div></div>`;
+  }
+  // Grade de pontuações
+  {
+    const played=rounds.map((rd,i)=>({rd,i})).filter(({i})=>players.some(p=>p.scores[i]!==null));
+    if(played.length){
+      let ths="<th>Jogador</th>";
+      for(const {rd} of played) ths+=`<th class="num"><span class="rlabel">R${rd.num}${rd.weight>1?" ×2":""}</span><span class="rdate">${rd.date}</span></th>`;
+      ths+='<th class="num avg-col"><span class="rlabel">Média</span><span class="rdate">todos</span></th>';
+      let body="";
+      for(const p of ranked){
+        let tds=`<td>${esc(p.name)}</td>`;
+        for(const {i} of played){
+          const s=p.scores[i];
+          tds+=s===null?'<td class="num">—</td>':`<td class="num${p.top9Idx.has(i)?" count":""}">${s}</td>`;
+        }
+        tds+=p.jogos>0?`<td class="num avg-col">${p.avgAll.toFixed(1)}</td>`:'<td class="num avg-col">—</td>';
+        body+=`<tr>${tds}</tr>`;
+      }
+      h+=`<div class="card"><h2>📋 Pontuações por Rodada</h2><div class="scroll"><table><thead><tr>${ths}</tr></thead><tbody>${body}</tbody></table></div>`+
+        `<div class="legend"><span class="hl">destacadas</span> = 9 melhores pontuações (contam pro campeonato) · Média = média de todas as rodadas jogadas</div></div>`;
+    }
+  }
+  // Modo descarte
+  {
+    const disc=ranked.filter(p=>p.inDiscard);
+    if(disc.length){
+      let rows="";
+      for(const p of disc){
+        rows+=`<div class="bullet"><b>${esc(p.name)}</b> (${p.jogos} rod.) — só melhora o TOP9 fazendo mais que <b>${p.top9Min}</b> pts</div>`;
+      }
+      h+=`<div class="card"><h2>⚡ Modo Descarte</h2>${rows}</div>`;
+    }
+  }
+  // Histórico de rodadas
+  if(roundResults.length>1){
+    let rows="";
+    for(const r of roundResults.slice().reverse()){
+      const winners=r.podium.filter(p=>p.pos===1).map(p=>esc(p.name)).join(" e ");
+      rows+=`<div class="bullet"><b>R${r.num}</b> (${r.date}, ${r.n} presentes): 🥇 ${winners} · 🔻 ${r.last.map(esc).join(" e ")}</div>`;
+    }
+    h+=`<div class="card"><h2>🗓️ Rodadas Anteriores</h2>${rows}</div>`;
+  }
+  // Próxima rodada
+  {
+    let next="🏁 Temporada encerrada";
+    const today=new Date();
+    for(const rd of rounds){
+      const [d,m]=rd.date.split("/").map(Number);
+      const dt=new Date(2026,m-1,d);
+      const hasScore=players.some(p=>p.scores[rounds.indexOf(rd)]!==null);
+      if(!hasScore&&dt>=new Date(today.getFullYear(),today.getMonth(),today.getDate())){
+        next=`Próxima rodada: R${rd.num} — ${rd.date}${rd.weight>1?" (conta em dobro!)":""} 🏌️`;
+        break;
+      }
+    }
+    const now=new Date();
+    h+=`<div class="footer">${next}<br>Dados ao vivo do Google Sheets · carregado ${now.toLocaleDateString("pt-BR")} ${now.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</div>`;
+  }
+  document.getElementById("app").innerHTML=h;
+}
+
+/* ============== BOOT ============== */
+fetch(CSV_URL)
+  .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); })
+  .then(text=>{
+    const rows=parseCSV(text);
+    if(!rows.length||!/^Jogador/i.test(String(rows[0][0]))) throw new Error("Formato inesperado da planilha");
+    render(buildModel(rows));
+  })
+  .catch(err=>{
+    document.getElementById("app").innerHTML=
+      `<div class="error">⚠️ Não consegui carregar os placares.<div class="hint">`+
+      `Verifique a conexão e tente recarregar a página.<br>`+
+      `(Organizador: o Google Sheet precisa estar compartilhado como "qualquer pessoa com o link — leitor".)<br>`+
+      `<code style="font-size:10px">${esc(err.message)}</code></div></div>`;
+  });
+</script>
+</body>
+</html>
