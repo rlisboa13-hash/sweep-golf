@@ -26,6 +26,7 @@
   .rank{display:grid;grid-template-columns:32px 1fr 60px 50px 60px;gap:6px;font-size:13px;align-items:center}
   .rank .hdr-cell{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.1)}
   .rank .cell{padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+  .rank .me{font-weight:700;color:#fbbf24}
   .rank .pos{text-align:center;color:#94a3b8}
   .rank .score{text-align:right;font-weight:600}
   .rank .avg{text-align:right;color:#9ae6b4}
@@ -44,6 +45,8 @@
   .scroll td.num{text-align:center;font-variant-numeric:tabular-nums}
   .scroll td.count{background:rgba(251,191,36,0.18);color:#fde68a;font-weight:700;border-radius:3px}
   .scroll td:first-child{font-weight:600;text-align:left}
+  .scroll tr.me td{color:#fbbf24}
+  .guest{margin-top:8px;padding:8px 10px;background:rgba(251,191,36,0.08);border:1px dashed rgba(251,191,36,0.3);border-radius:8px;font-size:12.5px;color:#fcd34d}
   .scroll th.avg-col,.scroll td.avg-col{background:rgba(134,239,172,0.06);border-left:1px solid rgba(134,239,172,0.15)}
   .scroll td.avg-col{color:#9ae6b4;font-weight:600}
   .legend{font-size:11px;color:#94a3b8;margin-top:6px}
@@ -72,6 +75,8 @@ const PRIZES = {4:[200,50],5:[200,100],6:[250,100],7:[250,150],8:[250,150,50],
   9:[300,150,50],10:[350,150,50],11:[350,200,50],12:[400,200,50],13:[400,200,100],
   14:[450,200,100],15:[450,250,100],16:[450,250,100,50]};
 const SEASON_END = "19/12";
+const ME = "R Lisboa";           // destaque dourado
+const GUEST_RE = /\(convidado\)/i; // linhas extras no Sheet marcadas assim
 
 /* ============== HELPERS ============== */
 function parseCSV(text){
@@ -136,12 +141,17 @@ function buildModel(rows){
     p.jogos=played.reduce((a,[i])=>a+rounds[i].weight,0);
     const expanded=[];
     for(const [i,s] of played) for(let k=0;k<rounds[i].weight;k++) expanded.push([i,s]);
-    const top=expanded.slice().sort((a,b)=>b[1]-a[1]).slice(0,TOP_N);
+    const sortedExp=expanded.slice().sort((a,b)=>b[1]-a[1]);
+    const top=sortedExp.slice(0,TOP_N);
+    const rest=sortedExp.slice(TOP_N);
     p.top9Idx=new Set(top.map(([i])=>i));
     p.top9Sum=top.reduce((a,[,s])=>a+s,0);
     p.top9Min=top.length?Math.min(...top.map(([,s])=>s)):null;
+    p.discarded=rest.map(([i,s])=>({num:rounds[i].num,score:s}))
+      .sort((a,b)=>a.score-b.score||a.num-b.num);
     p.avgAll=played.length?played.reduce((a,[,s])=>a+s,0)/played.length:0;
     p.inDiscard=p.jogos>=TOP_N;
+    p.isGuest=GUEST_RE.test(p.name);
   }
   // resultados por rodada + saldos
   for(const p of players){p.balance=0;p.lastCount=0;p.prizeTotal=0;}
@@ -190,7 +200,9 @@ function buildModel(rows){
 function render(model){
   const {rounds,players,roundResults}=model;
   const lastRound=roundResults.length?roundResults[roundResults.length-1]:null;
-  const ranked=players.slice().sort((a,b)=>b.top9Sum-a.top9Sum||b.avgAll-a.avgAll);
+  const members=players.filter(p=>!p.isGuest);
+  const guests=players.filter(p=>p.isGuest);
+  const ranked=members.slice().sort((a,b)=>b.top9Sum-a.top9Sum||b.avgAll-a.avgAll);
   let h="";
   // Header
   const sub=lastRound
@@ -212,7 +224,10 @@ function render(model){
     rows+=`<div class="pod-row"><div class="pos">🔻</div>`+
       `<div class="n">${lastTxt}${lastRound.lastTie?" (empate no último)":""}</div>`+
       `<div class="sc"></div><div class="pz" style="color:#fca5a5">paga R$${FEE+LAST_PENALTY}</div></div>`;
-    h+=`<div class="card"><h2>🏆 Destaque da Rodada R${lastRound.num}</h2><div class="podium">${rows}</div></div>`;
+    const lastIdx=rounds.findIndex(rd=>rd.num===lastRound.num);
+    const guestNotes=guests.filter(g=>g.scores[lastIdx]!==null)
+      .map(g=>`<div class="guest">👤 ${esc(g.name)} jogou a R${lastRound.num} com ${g.scores[lastIdx]} pts</div>`).join("");
+    h+=`<div class="card"><h2>🏆 Destaque da Rodada R${lastRound.num}</h2><div class="podium">${rows}</div>${guestNotes}</div>`;
   }
   // Ranking TOP9
   {
@@ -220,22 +235,12 @@ function render(model){
       `<div class="hdr-cell score">TOP9</div><div class="hdr-cell j">Jogos</div><div class="hdr-cell avg">Média</div>`;
     ranked.forEach((p,idx)=>{
       const chip=p.inDiscard?'<span class="chip">⚡</span>':"";
+      const meCls=p.name===ME?" me":"";
       const avg=p.jogos===0?"—":(p.jogos>=TOP_N?(p.top9Sum/TOP_N).toFixed(1):(p.top9Sum/p.jogos).toFixed(1));
-      cells+=`<div class="cell pos">${idx+1}</div><div class="cell">${esc(p.name)}${chip}</div>`+
+      cells+=`<div class="cell pos">${idx+1}</div><div class="cell${meCls}">${esc(p.name)}${chip}</div>`+
         `<div class="cell score">${p.top9Sum}</div><div class="cell j">${p.jogos}</div><div class="cell avg">${avg}</div>`;
     });
     h+=`<div class="card"><h2>📊 Ranking TOP 9</h2><div class="rank">${cells}</div></div>`;
-  }
-  // Saldo financeiro
-  if(roundResults.length){
-    const finRanked=players.slice().sort((a,b)=>b.balance-a.balance);
-    let rows="";
-    for(const p of finRanked){
-      const v=Math.round(p.balance);
-      const cls=v>0?"pos":(v<0?"neg":"zero");
-      rows+=`<div class="p">${esc(p.name)}</div><div class="v ${cls}">${fmtMoney(v)}</div>`;
-    }
-    h+=`<div class="card"><h2>💰 Saldo Financeiro</h2><div class="fin">${rows}</div></div>`;
   }
   // Grade de pontuações
   {
@@ -245,14 +250,15 @@ function render(model){
       for(const {rd} of played) ths+=`<th class="num"><span class="rlabel">R${rd.num}${rd.weight>1?" ×2":""}</span><span class="rdate">${rd.date}</span></th>`;
       ths+='<th class="num avg-col"><span class="rlabel">Média</span><span class="rdate">todos</span></th>';
       let body="";
-      for(const p of ranked){
+      for(const p of [...ranked,...guests]){
+        const meCls=p.name===ME?' class="me"':"";
         let tds=`<td>${esc(p.name)}</td>`;
         for(const {i} of played){
           const s=p.scores[i];
           tds+=s===null?'<td class="num">—</td>':`<td class="num${p.top9Idx.has(i)?" count":""}">${s}</td>`;
         }
         tds+=p.jogos>0?`<td class="num avg-col">${p.avgAll.toFixed(1)}</td>`:'<td class="num avg-col">—</td>';
-        body+=`<tr>${tds}</tr>`;
+        body+=`<tr${meCls}>${tds}</tr>`;
       }
       h+=`<div class="card"><h2>📋 Pontuações por Rodada</h2><div class="scroll"><table><thead><tr>${ths}</tr></thead><tbody>${body}</tbody></table></div>`+
         `<div class="legend"><span class="hl">destacadas</span> = 9 melhores pontuações (contam pro campeonato) · Média = média de todas as rodadas jogadas</div></div>`;
@@ -264,7 +270,11 @@ function render(model){
     if(disc.length){
       let rows="";
       for(const p of disc){
-        rows+=`<div class="bullet"><b>${esc(p.name)}</b> (${p.jogos} rod.) — só melhora o TOP9 fazendo mais que <b>${p.top9Min}</b> pts</div>`;
+        const discTxt=p.discarded.length
+          ?`descartando ${p.discarded.map(d=>`${d.score} (R${d.num})`).join(", ")}. `
+          :"";
+        rows+=`<div class="bullet"><b>${esc(p.name)}</b> (${p.jogos} rod.) — ${discTxt}`+
+          `Mín. TOP9 = ${p.top9Min}. Precisa superar <b>${p.top9Min}</b> pra melhorar.</div>`;
       }
       h+=`<div class="card"><h2>⚡ Modo Descarte</h2>${rows}</div>`;
     }
