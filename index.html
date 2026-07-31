@@ -75,7 +75,6 @@ const PRIZES = {4:[200,50],5:[200,100],6:[250,100],7:[250,150],8:[250,150,50],
   9:[300,150,50],10:[350,150,50],11:[350,200,50],12:[400,200,50],13:[400,200,100],
   14:[450,200,100],15:[450,250,100],16:[450,250,100,50]};
 const SEASON_END = "19/12";
-const ME = "R Lisboa";           // destaque dourado
 const GUEST_RE = /\(convidado\)/i; // linhas extras no Sheet marcadas assim
 
 /* ============== HELPERS ============== */
@@ -235,34 +234,28 @@ function render(model){
       `<div class="hdr-cell score">TOP9</div><div class="hdr-cell j">Jogos</div><div class="hdr-cell avg">Média</div>`;
     ranked.forEach((p,idx)=>{
       const chip=p.inDiscard?'<span class="chip">⚡</span>':"";
-      const meCls=p.name===ME?" me":"";
       const avg=p.jogos===0?"—":(p.jogos>=TOP_N?(p.top9Sum/TOP_N).toFixed(1):(p.top9Sum/p.jogos).toFixed(1));
-      cells+=`<div class="cell pos">${idx+1}</div><div class="cell${meCls}">${esc(p.name)}${chip}</div>`+
+      cells+=`<div class="cell pos">${idx+1}</div><div class="cell">${esc(p.name)}${chip}</div>`+
         `<div class="cell score">${p.top9Sum}</div><div class="cell j">${p.jogos}</div><div class="cell avg">${avg}</div>`;
     });
     h+=`<div class="card"><h2>📊 Ranking TOP 9</h2><div class="rank">${cells}</div></div>`;
   }
   // Grade de pontuações
   {
-    const played=rounds.map((rd,i)=>({rd,i})).filter(({i})=>players.some(p=>p.scores[i]!==null));
-    if(played.length){
-      let ths="<th>Jogador</th>";
-      for(const {rd} of played) ths+=`<th class="num"><span class="rlabel">R${rd.num}${rd.weight>1?" ×2":""}</span><span class="rdate">${rd.date}</span></th>`;
-      ths+='<th class="num avg-col"><span class="rlabel">Média</span><span class="rdate">todos</span></th>';
-      let body="";
-      for(const p of [...ranked,...guests]){
-        const meCls=p.name===ME?' class="me"':"";
-        let tds=`<td>${esc(p.name)}</td>`;
-        for(const {i} of played){
-          const s=p.scores[i];
-          tds+=s===null?'<td class="num">—</td>':`<td class="num${p.top9Idx.has(i)?" count":""}">${s}</td>`;
-        }
-        tds+=p.jogos>0?`<td class="num avg-col">${p.avgAll.toFixed(1)}</td>`:'<td class="num avg-col">—</td>';
-        body+=`<tr${meCls}>${tds}</tr>`;
-      }
-      h+=`<div class="card"><h2>📋 Pontuações por Rodada</h2><div class="scroll"><table><thead><tr>${ths}</tr></thead><tbody>${body}</tbody></table></div>`+
-        `<div class="legend"><span class="hl">destacadas</span> = 9 melhores pontuações (contam pro campeonato) · Média = média de todas as rodadas jogadas</div></div>`;
+    let ths="<th>Jogador</th>";
+    rounds.forEach(rd=>{ths+=`<th class="num"><span class="rlabel">R${rd.num}${rd.weight>1?" ×2":""}</span><span class="rdate">${rd.date}</span></th>`;});
+    ths+='<th class="num avg-col"><span class="rlabel">Média</span><span class="rdate">todos</span></th>';
+    let body="";
+    for(const p of [...ranked,...guests]){
+      let tds=`<td>${esc(p.name)}</td>`;
+      p.scores.forEach((s,i)=>{
+        tds+=s===null?'<td class="num">—</td>':`<td class="num${p.top9Idx.has(i)?" count":""}">${s}</td>`;
+      });
+      tds+=p.jogos>0?`<td class="num avg-col">${p.avgAll.toFixed(1)}</td>`:'<td class="num avg-col">—</td>';
+      body+=`<tr>${tds}</tr>`;
     }
+    h+=`<div class="card"><h2>📋 Pontuações por Rodada</h2><div class="scroll"><table><thead><tr>${ths}</tr></thead><tbody>${body}</tbody></table></div>`+
+      `<div class="legend"><span class="hl">destacadas</span> = 9 melhores pontuações (contam pro campeonato) · Média = média de todas as rodadas jogadas</div></div>`;
   }
   // Modo descarte
   {
