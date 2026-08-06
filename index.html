@@ -54,6 +54,27 @@
   .bullet{padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:12.5px}
   .bullet:last-child{border-bottom:none}
   .footer{text-align:center;color:#64748b;font-size:11px;padding:14px 0 4px}
+  .rules summary{cursor:pointer;list-style:none;color:#f59e0b;font-size:16px;font-weight:600;display:flex;align-items:center;gap:6px;user-select:none}
+  .rules summary::-webkit-details-marker{display:none}
+  .rules summary::after{content:"▸";margin-left:auto;color:#94a3b8;font-size:13px}
+  .rules[open] summary::after{content:"▾"}
+  .rules .calc{margin-top:14px}
+  .rules .lbl{font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+  .stepper{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .stepper button{width:38px;height:38px;border-radius:10px;border:1px solid rgba(251,191,36,0.35);background:rgba(251,191,36,0.12);color:#fbbf24;font-size:20px;font-weight:700;cursor:pointer;line-height:1}
+  .stepper button:active{background:rgba(251,191,36,0.25)}
+  .stepper input{width:74px;height:38px;text-align:center;font-size:18px;font-weight:700;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:#e2e8f0;font-variant-numeric:tabular-nums}
+  .stepper .un{font-size:13px;color:#94a3b8}
+  .ptab{width:100%;border-collapse:collapse;font-size:13px}
+  .ptab th{font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;text-align:right;padding:0 0 6px;border-bottom:1px solid rgba(255,255,255,0.1)}
+  .ptab th:first-child{text-align:left}
+  .ptab td{padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.05);text-align:right;font-variant-numeric:tabular-nums}
+  .ptab td:first-child{text-align:left;font-weight:600}
+  .ptab td.g{color:#fde68a}.ptab td.p{color:#86efac;font-weight:600}.ptab td.n{color:#fca5a5;font-weight:600}
+  .ptab tr.dim td{color:#94a3b8;font-weight:400}
+  .chk{margin-top:10px;font-size:11.5px;color:#94a3b8;line-height:1.6}
+  .chk b{color:#cbd5e1}
+  .warn{margin-top:8px;padding:7px 9px;border-radius:8px;background:rgba(251,191,36,0.1);border:1px dashed rgba(251,191,36,0.3);font-size:11.5px;color:#fcd34d}
   .loading,.error{text-align:center;padding:40px 16px;color:#94a3b8}
   .error{color:#fca5a5}
   .error .hint{color:#94a3b8;font-size:12px;margin-top:10px}
@@ -281,6 +302,23 @@ function render(model){
     }
     h+=`<div class="card"><h2>🗓️ Rodadas Anteriores</h2>${rows}</div>`;
   }
+  // Regra de distribuição — calculadora sempre disponível
+  {
+    const nDefault = roundResults.length ? roundResults[roundResults.length-1].n : 8;
+    h+=`<div class="card"><details class="rules" id="rulesCard">
+<summary>📖 Regra de distribuição do Sweep</summary>
+<div class="calc">
+  <div class="lbl">Quantos jogaram a rodada?</div>
+  <div class="stepper">
+    <button type="button" id="pMinus" aria-label="menos">−</button>
+    <input type="number" id="pN" min="1" max="40" step="1" value="${nDefault}" inputmode="numeric">
+    <button type="button" id="pPlus" aria-label="mais">+</button>
+    <span class="un">jogadores</span>
+  </div>
+  <div id="pOut"></div>
+</div>
+</details></div>`;
+  }
   // Próxima rodada
   {
     let next="🏁 Temporada encerrada";
@@ -298,6 +336,44 @@ function render(model){
     h+=`<div class="footer">${next}<br>Dados ao vivo do Google Sheets · carregado ${now.toLocaleDateString("pt-BR")} ${now.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</div>`;
   }
   document.getElementById("app").innerHTML=h;
+  wireRulesCalc();
+}
+
+/* ====== Calculadora da regra de distribuição ====== */
+function wireRulesCalc(){
+  const inp=document.getElementById("pN"), out=document.getElementById("pOut");
+  if(!inp||!out) return;
+  function draw(){
+    let n=parseInt(inp.value,10);
+    if(isNaN(n)||n<1) n=1;
+    if(n>40) n=40;
+    const pr=prizeList(n), pool=n*FEE+LAST_PENALTY;
+    const dist=pr.reduce((a,b)=>a+b,0);
+    let rows="";
+    for(let i=0;i<pr.length;i++){
+      const net=pr[i]-FEE;
+      rows+=`<tr><td>${i+1}º</td><td class="g">R$${pr[i]}</td>`+
+            `<td class="${net>0?"p":(net<0?"n":"")}">${fmtMoney(net)}</td></tr>`;
+    }
+    if(n-pr.length-1>0){
+      rows+=`<tr class="dim"><td>${pr.length+1}º a ${n-1}º</td><td>—</td><td class="n">−R$${FEE}</td></tr>`;
+    }
+    if(n>pr.length){
+      rows+=`<tr><td>Último 🔻</td><td>—</td><td class="n">−R$${FEE+LAST_PENALTY}</td></tr>`;
+    }
+    let html=`<table class="ptab"><thead><tr><th>Posição</th><th>Prêmio bruto</th><th>No bolso</th></tr></thead><tbody>${rows}</tbody></table>`;
+    html+=`<div class="chk">Arrecadado: <b>${n} × R$${FEE}</b> de pingo + <b>R$${LAST_PENALTY}</b> de penalidade do último = <b>R$${pool}</b>`+
+          `<br>Distribuído em prêmios: <b>R$${dist}</b> ${dist===pool?"✅ fecha certinho":"⚠️ NÃO fecha — avisar o Rick"}`+
+          `<br><b>No bolso</b> = prêmio bruto menos os R$${FEE} do pingo. Empate: soma os prêmios das posições empatadas e divide igual. Empate no último: divide a penalidade de R$${LAST_PENALTY}.</div>`;
+    if(n<4||n>16){
+      html+=`<div class="warn">⚠️ Fora da tabela oficial (4 a 16 jogadores) — valores extrapolados pelo padrão. Confirmar com o grupo.</div>`;
+    }
+    out.innerHTML=html;
+  }
+  document.getElementById("pMinus").onclick=()=>{ inp.value=Math.max(1,(parseInt(inp.value,10)||1)-1); draw(); };
+  document.getElementById("pPlus").onclick=()=>{ inp.value=Math.min(40,(parseInt(inp.value,10)||0)+1); draw(); };
+  inp.oninput=draw;
+  draw();
 }
 
 /* ============== BOOT ============== */
