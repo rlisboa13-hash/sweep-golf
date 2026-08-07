@@ -75,6 +75,25 @@
   .chk{margin-top:10px;font-size:11.5px;color:#94a3b8;line-height:1.6}
   .chk b{color:#cbd5e1}
   .warn{margin-top:8px;padding:7px 9px;border-radius:8px;background:rgba(251,191,36,0.1);border:1px dashed rgba(251,191,36,0.3);font-size:11.5px;color:#fcd34d}
+  .pay{display:flex;align-items:center;gap:8px;padding:9px 10px;background:rgba(255,255,255,0.03);border-radius:10px;margin-bottom:6px;font-size:13.5px}
+  .pay .from{font-weight:700;color:#fca5a5}
+  .pay .arw{color:#64748b;flex-shrink:0}
+  .pay .to{font-weight:700;color:#86efac;flex:1}
+  .pay .amt{font-weight:700;color:#fde68a;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .nopay{padding:9px 10px;color:#94a3b8;font-size:13px}
+  .dtl{margin-top:12px}
+  .dtl summary{cursor:pointer;list-style:none;color:#94a3b8;font-size:12.5px;user-select:none;padding:4px 0}
+  .dtl summary::-webkit-details-marker{display:none}
+  .dtl summary::after{content:"▸";margin-left:6px;font-size:11px}
+  .dtl[open] summary::after{content:"▾"}
+  .dtl table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  .dtl th{font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;text-align:right;padding:0 0 5px;border-bottom:1px solid rgba(255,255,255,0.1)}
+  .dtl th:first-child{text-align:left}
+  .dtl td{padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);text-align:right;font-variant-numeric:tabular-nums}
+  .dtl td:first-child{text-align:left;font-weight:600}
+  .dtl td.g{color:#fde68a}.dtl td.p{color:#86efac;font-weight:600}.dtl td.n{color:#fca5a5;font-weight:600}
+  .dtl td.z{color:#94a3b8}
+  .zsum{margin-top:8px;font-size:11.5px;color:#94a3b8}
   .loading,.error{text-align:center;padding:40px 16px;color:#94a3b8}
   .error{color:#fca5a5}
   .error .hint{color:#94a3b8;font-size:12px;margin-top:10px}
@@ -129,9 +148,13 @@ function prizeList(n){
 }
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 function fmtMoney(v){
-  const r=Math.round(v);
-  const sign=r>0?"+":(r<0?"−":"");
-  return sign+"R$"+Math.abs(r);
+  const sign=v>0.009?"+":(v<-0.009?"−":"");
+  return sign+"R$"+fmtBRL(Math.abs(v));
+}
+// mostra centavos só quando existem (empates podem dividir prêmio em valor quebrado)
+function fmtBRL(v){
+  const r=Math.round(v*100)/100;
+  return Number.isInteger(r)?String(r):r.toFixed(2).replace(".",",");
 }
 
 /* ============== CORE ============== */
@@ -190,6 +213,9 @@ function buildModel(rows){
       else groups.push({score:p.scores[i],players:[p]});
     }
     let pos=1;const podium=[];
+    // líquido da rodada por jogador (prêmio bruto − pingo − penalidade do último)
+    const net={},detail={};
+    for(const p of present){ net[p.name]=-FEE; detail[p.name]={pos:0,score:p.scores[i],gross:0,fee:FEE,pen:0}; }
     for(const g of groups){
       const span=g.players.length;
       // prêmios das posições pos..pos+span-1 somados e divididos
@@ -198,6 +224,7 @@ function buildModel(rows){
       const each=pot/span;
       for(const p of g.players){
         p.balance+=each; p.prizeTotal+=each;
+        net[p.name]+=each; detail[p.name].gross=each; detail[p.name].pos=pos; detail[p.name].tie=span>1;
         if(pos<=4&&each>0) podium.push({pos,name:p.name,score:g.score,prize:each,tie:span>1});
       }
       pos+=span;
@@ -207,13 +234,31 @@ function buildModel(rows){
     // último colocado (empate no último: penalidade dividida)
     const lastGroup=groups[groups.length-1];
     for(const p of lastGroup.players){
-      p.balance-=LAST_PENALTY/lastGroup.players.length;
-      p.lastCount++;
+      const pen=LAST_PENALTY/lastGroup.players.length;
+      p.balance-=pen; p.lastCount++;
+      net[p.name]-=pen; detail[p.name].pen=pen;
     }
-    roundResults.push({num:rd.num,date:rd.date,n,podium,
+    roundResults.push({num:rd.num,date:rd.date,n,podium,net,detail,
+      transfers:settle(net),
       last:lastGroup.players.map(p=>p.name),lastTie:lastGroup.players.length>1});
   });
   return {rounds,players,roundResults};
+}
+
+/* Converte líquidos em transferências mínimas: quem paga quem.
+   Mesma lógica do settle() em financeiro.py — mantidos em sincronia. */
+function settle(net){
+  const debt=Object.entries(net).filter(([,v])=>v<-1e-9).map(([n,v])=>[n,-v]).sort((a,b)=>b[1]-a[1]);
+  const cred=Object.entries(net).filter(([,v])=>v>1e-9).map(([n,v])=>[n,v]).sort((a,b)=>b[1]-a[1]);
+  const out=[];let i=0,j=0;
+  while(i<debt.length&&j<cred.length){
+    const amt=Math.min(debt[i][1],cred[j][1]);
+    out.push({from:debt[i][0],to:cred[j][0],amount:Math.round(amt*100)/100});
+    debt[i][1]-=amt; cred[j][1]-=amt;
+    if(debt[i][1]<1e-9) i++;
+    if(cred[j][1]<1e-9) j++;
+  }
+  return out;
 }
 
 /* ============== RENDER ============== */
@@ -248,6 +293,34 @@ function render(model){
     const guestNotes=guests.filter(g=>g.scores[lastIdx]!==null)
       .map(g=>`<div class="guest">👤 ${esc(g.name)} jogou a R${lastRound.num} com ${g.scores[lastIdx]} pts</div>`).join("");
     h+=`<div class="card"><h2>🏆 Destaque da Rodada R${lastRound.num}</h2><div class="podium">${rows}</div>${guestNotes}</div>`;
+  }
+  // Acerto de contas da rodada — quem paga quem
+  if(lastRound){
+    const t=lastRound.transfers;
+    let pays = t.length
+      ? t.map(x=>`<div class="pay"><span class="from">${esc(x.from)}</span>`+
+          `<span class="arw">paga</span><span class="amt">R$${fmtBRL(x.amount)}</span>`+
+          `<span class="arw">para</span><span class="to">${esc(x.to)}</span></div>`).join("")
+      : `<div class="nopay">Ninguém deve nada nesta rodada.</div>`;
+    // detalhe por jogador
+    const ent=Object.entries(lastRound.detail).sort((a,b)=>a[1].pos-b[1].pos||b[1].score-a[1].score);
+    let drows="";
+    for(const [name,d] of ent){
+      const n=lastRound.net[name];
+      drows+=`<tr><td>${esc(name)}${d.tie?' <span class="chip">emp.</span>':""}</td>`+
+        `<td class="z">${d.pos}º</td>`+
+        `<td class="${d.gross>0?"g":"z"}">${d.gross>0?"R$"+fmtBRL(d.gross):"—"}</td>`+
+        `<td class="n">−R$${fmtBRL(d.fee+d.pen)}</td>`+
+        `<td class="${n>0.009?"p":(n<-0.009?"n":"z")}">${fmtMoney(n)}</td></tr>`;
+    }
+    const soma=Object.values(lastRound.net).reduce((a,b)=>a+b,0);
+    h+=`<div class="card"><h2>💸 Acerto da Rodada R${lastRound.num}</h2>${pays}`+
+      `<details class="dtl"><summary>Ver o cálculo jogador a jogador</summary>`+
+      `<table><thead><tr><th>Jogador</th><th>Pos</th><th>Prêmio</th><th>Pingo</th><th>Líquido</th></tr></thead>`+
+      `<tbody>${drows}</tbody></table>`+
+      `<div class="zsum">Pingo = R$${FEE} de cada um; o último paga mais R$${LAST_PENALTY} (dividido em caso de empate). `+
+      `Soma dos líquidos: <b>R$${Math.round(soma)}</b> ${Math.abs(soma)<0.01?"✅ fecha em zero":"⚠️ NÃO fecha — avisar o Rick"}.</div>`+
+      `</details></div>`;
   }
   // Ranking TOP9
   {
