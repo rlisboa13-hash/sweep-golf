@@ -105,7 +105,9 @@
 "use strict";
 /* ============== CONFIG ============== */
 const SHEET_ID = "1rt4jNa5HFQecJhe2UOmD8Bd7FvZxxsTYCy23fBq_m-s";
-const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&t=${Date.now()}`;
+// headers=1 é OBRIGATÓRIO: sem ele o gviz "adivinha" quantas linhas são cabeçalho e
+// engole as linhas de jogadores que ainda não têm nenhum placar (some do app inteiro).
+const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&headers=1&t=${Date.now()}`;
 const DOUBLE_ROUND = 21;          // R21 conta em dobro
 const TOP_N = 9;                  // TOP 9 pontuações
 const FEE = 50;                   // pingo por rodada
@@ -454,7 +456,10 @@ fetch(CSV_URL)
   .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); })
   .then(text=>{
     const rows=parseCSV(text);
-    if(!rows.length||!/^Jogador/i.test(String(rows[0][0]))) throw new Error("Formato inesperado da planilha");
+    // igualdade exata, não prefixo: "Jogador Barrichello Beyruti Caca" (header inflado
+    // pelo gviz) passava no teste antigo e o app perdia jogadores em silêncio.
+    if(!rows.length||String(rows[0][0]).trim().toLowerCase()!=="jogador")
+      throw new Error("Formato inesperado da planilha: célula A1 = \""+String(rows[0]&&rows[0][0]).slice(0,60)+"\"");
     render(buildModel(rows));
   })
   .catch(err=>{
