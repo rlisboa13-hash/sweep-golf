@@ -276,28 +276,14 @@ function render(model){
     ? `Atualizado após R${lastRound.num} (${lastRound.date}) · ${lastRound.n} jogadores presentes`
     : "Pré-temporada · R1 em 01/08/2026 · 21 etapas até "+SEASON_END;
   h+=`<div class="hdr"><h1>🏌️ Sweep Golf — 2º Semestre 2026</h1><div class="sub">${sub}</div></div>`;
-  // Pódio da última rodada
+  // Card "Destaque da Rodada" aposentado em 07/08/2026 (pedido do Rick) —
+  // era redundante com o Acerto da Rodada. Pódio, pontos e nota de convidado
+  // agora vivem dentro do card de Acerto.
+  // Acerto de contas da rodada — quem paga quem
   if(lastRound){
-    let rows="";
-    const seen=new Set();
-    for(const p of lastRound.podium){
-      rows+=`<div class="pod-row"><div class="pos">${p.pos}º</div>`+
-        `<div class="n">${esc(p.name)}${p.tie?" (empate)":""}</div>`+
-        `<div class="sc">${p.score} pts</div>`+
-        `<div class="pz">R$${Math.round(p.prize*100)/100}</div></div>`;
-      seen.add(p.name);
-    }
-    const lastTxt=lastRound.last.map(esc).join(" e ");
-    rows+=`<div class="pod-row"><div class="pos">🔻</div>`+
-      `<div class="n">${lastTxt}${lastRound.lastTie?" (empate no último)":""}</div>`+
-      `<div class="sc"></div><div class="pz" style="color:#fca5a5">paga R$${FEE+LAST_PENALTY}</div></div>`;
     const lastIdx=rounds.findIndex(rd=>rd.num===lastRound.num);
     const guestNotes=guests.filter(g=>g.scores[lastIdx]!==null)
       .map(g=>`<div class="guest">👤 ${esc(g.name)} jogou a R${lastRound.num} com ${g.scores[lastIdx]} pts</div>`).join("");
-    h+=`<div class="card"><h2>🏆 Destaque da Rodada R${lastRound.num}</h2><div class="podium">${rows}</div>${guestNotes}</div>`;
-  }
-  // Acerto de contas da rodada — quem paga quem
-  if(lastRound){
     const t=lastRound.transfers;
     let pays = t.length
       ? t.map(x=>`<div class="pay"><span class="from">${esc(x.from)}</span>`+
@@ -311,14 +297,15 @@ function render(model){
       const n=lastRound.net[name];
       drows+=`<tr><td>${esc(name)}${d.tie?' <span class="chip">emp.</span>':""}</td>`+
         `<td class="z">${d.pos}º</td>`+
+        `<td class="z">${d.score}</td>`+
         `<td class="${d.gross>0?"g":"z"}">${d.gross>0?"R$"+fmtBRL(d.gross):"—"}</td>`+
         `<td class="n">−R$${fmtBRL(d.fee+d.pen)}</td>`+
         `<td class="${n>0.009?"p":(n<-0.009?"n":"z")}">${fmtMoney(n)}</td></tr>`;
     }
     const soma=Object.values(lastRound.net).reduce((a,b)=>a+b,0);
-    h+=`<div class="card"><h2>💸 Acerto da Rodada R${lastRound.num}</h2>${pays}`+
+    h+=`<div class="card"><h2>💸 Acerto da Rodada R${lastRound.num}</h2>${pays}${guestNotes}`+
       `<details class="dtl"><summary>Ver o cálculo jogador a jogador</summary>`+
-      `<table><thead><tr><th>Jogador</th><th>Pos</th><th>Prêmio</th><th>Pingo</th><th>Líquido</th></tr></thead>`+
+      `<table><thead><tr><th>Jogador</th><th>Pos</th><th>Pts</th><th>Prêmio</th><th>Pingo</th><th>Líquido</th></tr></thead>`+
       `<tbody>${drows}</tbody></table>`+
       `<div class="zsum">Pingo = R$${FEE} de cada um; o último paga mais R$${LAST_PENALTY} (dividido em caso de empate). `+
       `Soma dos líquidos: <b>R$${Math.round(soma)}</b> ${Math.abs(soma)<0.01?"✅ fecha em zero":"⚠️ NÃO fecha — avisar o Rick"}.</div>`+
