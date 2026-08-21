@@ -46,6 +46,7 @@
   .scroll td.count{background:rgba(251,191,36,0.18);color:#fde68a;font-weight:700;border-radius:3px}
   .scroll td:first-child{font-weight:600;text-align:left}
   .scroll tr.me td{color:#fbbf24}
+  .guest.gwarn{background:rgba(248,113,113,0.1);border-color:rgba(248,113,113,0.45);color:#fca5a5}
   .guest{margin-top:8px;padding:8px 10px;background:rgba(251,191,36,0.08);border:1px dashed rgba(251,191,36,0.3);border-radius:8px;font-size:12.5px;color:#fcd34d}
   .scroll th.avg-col,.scroll td.avg-col{background:rgba(134,239,172,0.06);border-left:1px solid rgba(134,239,172,0.15)}
   .scroll td.avg-col{color:#9ae6b4;font-weight:600}
@@ -120,6 +121,12 @@ const PRIZES = {4:[200,50],5:[200,100],6:[250,100],7:[250,150],8:[250,150,50],
   9:[300,150,50],10:[350,150,50],11:[350,200,50],12:[400,200,50],13:[400,200,100],
   14:[450,200,100],15:[450,250,100],16:[450,250,100,50]};
 const SEASON_END = "19/12";
+// Os 15 do grupo no 2º semestre 2026. QUALQUER outra linha do Sheet é tratada como
+// convidado — assim basta escrever o nome dele na coluna A, sem sufixo nenhum.
+// Mudou a lista de jogadores do semestre? Atualizar aqui.
+const MEMBERS=["Barrichello","Beyruti","Caca","Claudio","Dega","Dudu","GAP","Gui Lopes",
+  "Gui Rezende","Lut","Naves","Patrick","R Lisboa","Ricky C","Zillo"];
+const MEMBER_SET=new Set(MEMBERS.map(n=>n.toLowerCase()));
 // Linha de convidado no Sheet: nome com "(convidado)" OU começando com "Convidado".
 // As linhas fixas "Convidado 1" / "Convidado 2" vivem sempre no fim do Sheet e
 // ficam invisíveis no app enquanto estiverem sem placar em todas as rodadas.
@@ -197,7 +204,8 @@ function buildModel(rows){
   for(let r=1;r<rows.length;r++){
     const raw=String(rows[r][0]||"").trim();
     if(!raw) continue;
-    const isGuest=GUEST_RE.test(raw);
+    // convidado = qualquer linha que não seja um dos 15 do grupo
+    const isGuest=GUEST_RE.test(raw)||!MEMBER_SET.has(cleanName(raw).toLowerCase());
     const guestNames=[];
     const scores=rounds.map(rd=>{
       const v=String(rows[r][rd.col]??"").trim();
@@ -211,7 +219,9 @@ function buildModel(rows){
       const n=parseInt(v,10);
       return isNaN(n)?null:n;
     });
-    parsed.push({name:raw,label:cleanName(raw),isGuest,guestNames,scores});
+    // "Convidado 1" ainda sem nome trocado na coluna A
+    const isPlaceholder=isGuest&&/^convidado\s*\d*$/i.test(cleanName(raw));
+    parsed.push({name:raw,label:cleanName(raw),isGuest,isPlaceholder,guestNames,scores});
   }
   // linha fixa de convidado que ninguém usou não aparece em lugar nenhum do app
   const players=parsed.filter(p=>!p.isGuest||p.scores.some(s=>s!==null));
@@ -293,7 +303,8 @@ function buildModel(rows){
     }
     roundResults.push({num:rd.num,date:rd.date,n,podium,net,detail,
       transfers:settle(net),
-      guestsIn:present.filter(p=>p.isGuest).map(p=>({name:nm.get(p),score:p.scores[i]})),
+      guestsIn:present.filter(p=>p.isGuest).map(p=>({name:nm.get(p),score:p.scores[i],
+        ph:p.isPlaceholder&&!p.guestNames[i],cellName:!!p.guestNames[i]})),
       last:lastGroup.players.map(p=>nm.get(p)),lastTie:lastGroup.players.length>1});
   });
   return {rounds,players,roundResults};
@@ -333,8 +344,18 @@ function render(model){
   // agora vivem dentro do card de Acerto.
   // Acerto de contas da rodada — quem paga quem
   if(lastRound){
-    const guestNotes=(lastRound.guestsIn||[])
-      .map(g=>`<div class="guest">👤 ${esc(g.name)} jogou a R${lastRound.num} como convidado, com ${g.score} pts — entra no rateio do dia, fora do Ranking TOP 9</div>`).join("");
+    const guestNotes=(lastRound.guestsIn||[]).map(g=>{
+      const dica=g.ph
+        ? ` <b>Troque "${esc(g.name)}" pelo nome dele na coluna A da planilha.</b>`
+        : "";
+      const risco=g.cellName
+        ? `<div class="guest gwarn">⚠️ O nome de <b>${esc(g.name)}</b> está escrito dentro da célula da rodada. `+
+          `O Google só devolve texto enquanto a coluna não tiver virado numérica — quando virar, esse convidado `+
+          `<b>some do rateio sozinho</b>. Mova o nome para a coluna A da linha de convidado.</div>`
+        : "";
+      return `<div class="guest">👤 ${esc(g.name)} jogou a R${lastRound.num} como convidado, com ${g.score} pts — `+
+             `entra no rateio do dia, fora do Ranking TOP 9.${dica}</div>${risco}`;
+    }).join("");
     const t=lastRound.transfers;
     let pays = t.length
       ? t.map(x=>`<div class="pay"><span class="from">${esc(x.from)}</span>`+
@@ -361,6 +382,17 @@ function render(model){
       `<div class="zsum">Pingo = R$${FEE} de cada um; o último paga mais R$${LAST_PENALTY} (dividido em caso de empate). `+
       `Soma dos líquidos: <b>R$${Math.round(soma)}</b> ${Math.abs(soma)<0.01?"✅ fecha em zero":"⚠️ NÃO fecha — avisar o Rick"}.</div>`+
       `</details></div>`;
+  }
+  // Aviso: algum dos 15 do grupo sumiu do Sheet (típico de erro de digitação na coluna A)
+  {
+    const vistos=new Set(members.map(p=>p.label.toLowerCase()));
+    const faltando=MEMBERS.filter(n=>!vistos.has(n.toLowerCase()));
+    if(faltando.length){
+      h+=`<div class="card"><h2>⚠️ Conferir a planilha</h2><div class="guest gwarn">`+
+        `Não achei no Sheet: <b>${faltando.map(esc).join(", ")}</b>. `+
+        `Provavelmente o nome na coluna A foi alterado — quem não bate com a lista do grupo `+
+        `é tratado como convidado e sai do Ranking TOP 9.</div></div>`;
+    }
   }
   // Ranking TOP9
   {
@@ -504,9 +536,11 @@ function wireRulesCalc(){
       html+=`<div class="warn">⚠️ Fora da tabela oficial (4 a 16 jogadores) — valores extrapolados pelo padrão. Confirmar com o grupo.</div>`;
     }
     if(g>0){
-      html+=`<div class="warn">👤 Pra esse rateio valer pro grupo todo, o convidado precisa entrar na planilha: `+
-            `na linha <b>Convidado 1</b> (ou <b>Convidado 2</b>), escreva na coluna da rodada o nome e os pontos dele — `+
-            `ex.: <b>Zé 31</b>. O app faz o resto.</div>`;
+      html+=`<div class="warn">👤 Pra esse rateio valer pro grupo todo, o convidado precisa entrar na planilha, `+
+            `em <b>dois lugares</b> da linha <b>Convidado 1</b> (ou <b>Convidado 2</b>):<br>`+
+            `1) o <b>nome</b> dele na <b>coluna A</b>, por cima de "Convidado 1" (pode ser só o primeiro nome);<br>`+
+            `2) os <b>pontos</b> (só o número) na coluna da rodada.<br>`+
+            `O app faz o resto.</div>`;
     }
     out.innerHTML=html;
   }
