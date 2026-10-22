@@ -51,6 +51,8 @@
   .scroll th.avg-col,.scroll td.avg-col{background:rgba(134,239,172,0.06);border-left:1px solid rgba(134,239,172,0.15)}
   .scroll td.avg-col{color:#9ae6b4;font-weight:600}
   .legend{font-size:11px;color:#94a3b8;margin-top:6px}
+  .scroll td.best{background:rgba(56,189,248,0.22);color:#7dd3fc;font-weight:700;border-radius:3px;text-decoration:line-through;text-decoration-color:rgba(125,211,252,0.7)}
+  .legend .bx{display:inline-block;padding:0 5px;background:rgba(56,189,248,0.22);color:#7dd3fc;border-radius:3px;font-weight:700;text-decoration:line-through}
   .legend .hl{display:inline-block;padding:0 5px;background:rgba(251,191,36,0.18);color:#fde68a;border-radius:3px;font-weight:700}
   .bullet{padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:12.5px}
   .bullet:last-child{border-bottom:none}
@@ -113,7 +115,8 @@ const SHEET_ID = "1rt4jNa5HFQecJhe2UOmD8Bd7FvZxxsTYCy23fBq_m-s";
 // engole as linhas de jogadores que ainda não têm nenhum placar (some do app inteiro).
 const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&headers=1&t=${Date.now()}`;
 const DOUBLE_ROUND = 21;          // R21 conta em dobro
-const TOP_N = 9;                  // TOP 9 pontuações
+const TOP_N = 9;                  // contam 9 pontuações: da 2ª à 10ª melhor
+const DROP_BEST = 1;              // descarta a MELHOR nota (R21 dobrada: sai só uma cópia) — vale desde a R1
 const FEE = 50;                   // pingo por rodada
 const LAST_PENALTY = 50;          // extra do último colocado
 // Premiação diária BRUTA por nº de presentes: [1º, 2º, 3º, 4º]
@@ -232,15 +235,22 @@ function buildModel(rows){
     const expanded=[];
     for(const [i,s] of played) for(let k=0;k<rounds[i].weight;k++) expanded.push([i,s]);
     const sortedExp=expanded.slice().sort((a,b)=>b[1]-a[1]);
-    const top=sortedExp.slice(0,TOP_N);
-    const rest=sortedExp.slice(TOP_N);
+    // regra 2º sem/2026: a melhor nota é descartada; contam da 2ª à 10ª.
+    // Cada cópia da R21 é uma entrada separada, então só UMA cópia sai se ela for a melhor.
+    const best=sortedExp.slice(0,DROP_BEST);
+    const top=sortedExp.slice(DROP_BEST,DROP_BEST+TOP_N);
+    const rest=sortedExp.slice(DROP_BEST+TOP_N);
     p.top9Idx=new Set(top.map(([i])=>i));
+    // rodada cuja nota foi descartada como "melhor" — se for a R21, a outra cópia ainda conta
+    p.bestIdx=new Set(best.filter(([i])=>!p.top9Idx.has(i)).map(([i])=>i));
+    p.bestDiscarded=best.map(([i,s])=>({num:rounds[i].num,score:s}));
+    p.counted=top.length;
     p.top9Sum=top.reduce((a,[,s])=>a+s,0);
     p.top9Min=top.length?Math.min(...top.map(([,s])=>s)):null;
     p.discarded=rest.map(([i,s])=>({num:rounds[i].num,score:s}))
       .sort((a,b)=>a.score-b.score||a.num-b.num);
     p.avgAll=played.length?played.reduce((a,[,s])=>a+s,0)/played.length:0;
-    p.inDiscard=p.jogos>=TOP_N;
+    p.inDiscard=p.jogos>DROP_BEST+TOP_N-1;   // 10+ notas: cada nova só entra se superar a menor que conta
     // rótulo do convidado = os nomes que realmente apareceram nas células
     if(p.isGuest){
       const usados=[...new Set(p.guestNames.filter(Boolean))];
@@ -354,7 +364,7 @@ function render(model){
           `<b>some do rateio sozinho</b>. Mova o nome para a coluna A da linha de convidado.</div>`
         : "";
       return `<div class="guest">👤 ${esc(g.name)} jogou a R${lastRound.num} como convidado, com ${g.score} pts — `+
-             `entra no rateio do dia, fora do Ranking TOP 9.${dica}</div>${risco}`;
+             `entra no rateio do dia, fora do Ranking.${dica}</div>${risco}`;
     }).join("");
     const t=lastRound.transfers;
     let pays = t.length
@@ -391,20 +401,20 @@ function render(model){
       h+=`<div class="card"><h2>⚠️ Conferir a planilha</h2><div class="guest gwarn">`+
         `Não achei no Sheet: <b>${faltando.map(esc).join(", ")}</b>. `+
         `Provavelmente o nome na coluna A foi alterado — quem não bate com a lista do grupo `+
-        `é tratado como convidado e sai do Ranking TOP 9.</div></div>`;
+        `é tratado como convidado e sai do Ranking.</div></div>`;
     }
   }
   // Ranking TOP9
   {
     let cells=`<div class="hdr-cell pos">#</div><div class="hdr-cell">Jogador</div>`+
-      `<div class="hdr-cell score">TOP9</div><div class="hdr-cell j">Jogos</div><div class="hdr-cell avg">Média</div>`;
+      `<div class="hdr-cell score">Pts</div><div class="hdr-cell j">Jogos</div><div class="hdr-cell avg">Média</div>`;
     ranked.forEach((p,idx)=>{
       const chip=p.inDiscard?'<span class="chip">⚡</span>':"";
-      const avg=p.jogos===0?"—":(p.jogos>=TOP_N?(p.top9Sum/TOP_N).toFixed(1):(p.top9Sum/p.jogos).toFixed(1));
+      const avg=p.counted?(p.top9Sum/p.counted).toFixed(1):"—";
       cells+=`<div class="cell pos">${idx+1}</div><div class="cell">${esc(p.label)}${chip}</div>`+
         `<div class="cell score">${p.top9Sum}</div><div class="cell j">${p.jogos}</div><div class="cell avg">${avg}</div>`;
     });
-    h+=`<div class="card"><h2>📊 Ranking TOP 9</h2><div class="rank">${cells}</div></div>`;
+    h+=`<div class="card"><h2>📊 Ranking — 2ª à 10ª nota</h2><div class="legend">Descarta a melhor nota de cada um; contam as 9 seguintes. Média = média das notas que contam.</div><div class="rank">${cells}</div></div>`;
   }
   // Grade de pontuações
   {
@@ -418,25 +428,30 @@ function render(model){
       p.scores.forEach((s,i)=>{
         // convidado não disputa o campeonato: nunca destacar como "conta pro TOP 9"
         const hl=!p.isGuest&&p.top9Idx.has(i);
-        tds+=s===null?'<td class="num">—</td>':`<td class="num${hl?" count":""}">${s}</td>`;
+        const bx=!p.isGuest&&p.bestIdx.has(i);
+        tds+=s===null?'<td class="num">—</td>':`<td class="num${hl?" count":""}${bx?" best":""}">${s}</td>`;
       });
       tds+=p.jogos>0?`<td class="num avg-col">${p.avgAll.toFixed(1)}</td>`:'<td class="num avg-col">—</td>';
       body+=`<tr>${tds}</tr>`;
     }
     h+=`<div class="card"><h2>📋 Pontuações por Rodada</h2><div class="scroll"><table><thead><tr>${ths}</tr></thead><tbody>${body}</tbody></table></div>`+
-      `<div class="legend"><span class="hl">destacadas</span> = 9 melhores pontuações (contam pro campeonato) · Média = média de todas as rodadas jogadas</div></div>`;
+      `<div class="legend"><span class="hl">destacadas</span> = notas que contam (da 2ª à 10ª melhor) · <span class="bx">azul</span> = melhor nota de cada um (descartada) · Média = média de todas as rodadas jogadas</div></div>`;
   }
   // Modo descarte
   {
+    // só quem já tem 10+ notas — a melhor descartada de todos aparece riscada na grade
     const disc=ranked.filter(p=>p.inDiscard);
     if(disc.length){
       let rows="";
       for(const p of disc){
-        const discTxt=p.discarded.length
-          ?`descartando ${p.discarded.map(d=>`${d.score} (R${d.num})`).join(", ")}. `
+        const b=p.bestDiscarded.map(d=>`${d.score} (R${d.num}${d.num===DOUBLE_ROUND?", 1 cópia":""})`).join(", ");
+        const outras=p.discarded.length
+          ?` + ${p.discarded.map(d=>`${d.score} (R${d.num})`).join(", ")} por excesso`
           :"";
-        rows+=`<div class="bullet"><b>${esc(p.name)}</b> (${p.jogos} rod.) — ${discTxt}`+
-          `Mín. TOP9 = ${p.top9Min}. Precisa superar <b>${p.top9Min}</b> pra melhorar.</div>`;
+        const meta=p.inDiscard
+          ?`Menor que conta = ${p.top9Min}. Precisa superar <b>${p.top9Min}</b> pra melhorar.`
+          :`Ainda com ${p.counted} de 9 notas contando — qualquer rodada soma.`;
+        rows+=`<div class="bullet"><b>${esc(p.name)}</b> (${p.jogos} rod.) — descartando a melhor: ${b}${outras}. ${meta}</div>`;
       }
       h+=`<div class="card"><h2>⚡ Modo Descarte</h2>${rows}</div>`;
     }
@@ -508,7 +523,7 @@ function wireRulesCalc(){
     let n=m+g; if(n>40) n=40;
     tot.innerHTML = g>0
       ? `Total na rodada: <b>${m} do grupo + ${g} convidado${g>1?"s":""} = ${n} jogadores</b>.`+
-        `<br>Convidado conta igual a todo mundo: paga o pingo, pode levar prêmio e pode ser o último. Só não entra no Ranking TOP 9.`
+        `<br>Convidado conta igual a todo mundo: paga o pingo, pode levar prêmio e pode ser o último. Só não entra no Ranking.`
       : `Total na rodada: <b>${n} jogador${n===1?"":"es"}</b>.`;
     if(n<2){
       out.innerHTML=`<div class="chk">Precisa de pelo menos 2 jogadores pra ter rateio.</div>`;
