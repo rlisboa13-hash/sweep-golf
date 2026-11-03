@@ -115,7 +115,7 @@ const SHEET_ID = "1rt4jNa5HFQecJhe2UOmD8Bd7FvZxxsTYCy23fBq_m-s";
 // engole as linhas de jogadores que ainda não têm nenhum placar (some do app inteiro).
 const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&headers=1&t=${Date.now()}`;
 const DOUBLE_ROUND = 21;          // R21 conta em dobro
-const TOP_N = 9;                  // contam 9 pontuações: da 2ª à 10ª melhor
+const TOP_N = 8;                  // contam 8 pontuações: da 2ª à 9ª melhor (Rick, 03/11/2026)
 const DROP_BEST = 1;              // descarta a MELHOR nota (R21 dobrada: sai só uma cópia) — vale desde a R1
 const FEE = 50;                   // pingo por rodada
 const LAST_PENALTY = 50;          // extra do último colocado
@@ -235,7 +235,7 @@ function buildModel(rows){
     const expanded=[];
     for(const [i,s] of played) for(let k=0;k<rounds[i].weight;k++) expanded.push([i,s]);
     const sortedExp=expanded.slice().sort((a,b)=>b[1]-a[1]);
-    // regra 2º sem/2026: a melhor nota é descartada; contam da 2ª à 10ª.
+    // regra 2º sem/2026: a melhor nota é descartada; contam da 2ª à 9ª (8 notas).
     // Cada cópia da R21 é uma entrada separada, então só UMA cópia sai se ela for a melhor.
     const best=sortedExp.slice(0,DROP_BEST);
     const top=sortedExp.slice(DROP_BEST,DROP_BEST+TOP_N);
@@ -250,7 +250,7 @@ function buildModel(rows){
     p.discarded=rest.map(([i,s])=>({num:rounds[i].num,score:s}))
       .sort((a,b)=>a.score-b.score||a.num-b.num);
     p.avgAll=played.length?played.reduce((a,[,s])=>a+s,0)/played.length:0;
-    p.inDiscard=p.jogos>DROP_BEST+TOP_N-1;   // 10+ notas: cada nova só entra se superar a menor que conta
+    p.inDiscard=p.jogos>DROP_BEST+TOP_N-1;   // 9+ notas: cada nova só entra se superar a menor que conta
     // rótulo do convidado = os nomes que realmente apareceram nas células
     if(p.isGuest){
       const usados=[...new Set(p.guestNames.filter(Boolean))];
@@ -414,7 +414,7 @@ function render(model){
       cells+=`<div class="cell pos">${idx+1}</div><div class="cell">${esc(p.label)}${chip}</div>`+
         `<div class="cell score">${p.top9Sum}</div><div class="cell j">${p.jogos}</div><div class="cell avg">${avg}</div>`;
     });
-    h+=`<div class="card"><h2>📊 Ranking — 2ª à 10ª nota</h2><div class="legend">Descarta a melhor nota de cada um; contam as 9 seguintes. Média = média das notas que contam.</div><div class="rank">${cells}</div></div>`;
+    h+=`<div class="card"><h2>📊 Ranking — 2ª à 9ª nota</h2><div class="legend">Descarta a melhor nota de cada um; contam as 8 seguintes. Média = média das notas que contam.</div><div class="rank">${cells}</div></div>`;
   }
   // Grade de pontuações
   {
@@ -435,11 +435,11 @@ function render(model){
       body+=`<tr>${tds}</tr>`;
     }
     h+=`<div class="card"><h2>📋 Pontuações por Rodada</h2><div class="scroll"><table><thead><tr>${ths}</tr></thead><tbody>${body}</tbody></table></div>`+
-      `<div class="legend"><span class="hl">destacadas</span> = notas que contam (da 2ª à 10ª melhor) · <span class="bx">azul</span> = melhor nota de cada um (descartada) · Média = média de todas as rodadas jogadas</div></div>`;
+      `<div class="legend"><span class="hl">destacadas</span> = notas que contam (da 2ª à 9ª melhor) · <span class="bx">azul</span> = melhor nota de cada um (descartada) · Média = média de todas as rodadas jogadas</div></div>`;
   }
   // Modo descarte
   {
-    // só quem já tem 10+ notas — a melhor descartada de todos aparece riscada na grade
+    // só quem já tem 9+ notas — a melhor descartada de todos aparece riscada na grade
     const disc=ranked.filter(p=>p.inDiscard);
     if(disc.length){
       let rows="";
@@ -450,7 +450,7 @@ function render(model){
           :"";
         const meta=p.inDiscard
           ?`Menor que conta = ${p.top9Min}. Precisa superar <b>${p.top9Min}</b> pra melhorar.`
-          :`Ainda com ${p.counted} de 9 notas contando — qualquer rodada soma.`;
+          :`Ainda com ${p.counted} de ${TOP_N} notas contando — qualquer rodada soma.`;
         rows+=`<div class="bullet"><b>${esc(p.name)}</b> (${p.jogos} rod.) — descartando a melhor: ${b}${outras}. ${meta}</div>`;
       }
       h+=`<div class="card"><h2>⚡ Modo Descarte</h2>${rows}</div>`;
